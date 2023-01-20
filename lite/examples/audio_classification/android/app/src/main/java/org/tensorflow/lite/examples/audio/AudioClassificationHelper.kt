@@ -22,34 +22,38 @@ import android.os.SystemClock
 import android.util.Log
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
-import org.tensorflow.lite.examples.audio.fragments.AudioClassificationListener
+import org.tensorflow.lite.examples.audio.fragments.AudioClassificationListener // in AudioFragment
 import org.tensorflow.lite.support.audio.TensorAudio
 import org.tensorflow.lite.task.audio.classifier.AudioClassifier
 import org.tensorflow.lite.task.core.BaseOptions
 
 class AudioClassificationHelper(
-  val context: Context,
-  val listener: AudioClassificationListener,
-  var currentModel: String = YAMNET_MODEL,
-  var classificationThreshold: Float = DISPLAY_THRESHOLD,
-  var overlap: Float = DEFAULT_OVERLAP_VALUE,
-  var numOfResults: Int = DEFAULT_NUM_OF_RESULTS,
-  var currentDelegate: Int = 0,
-  var numThreads: Int = 2
+  // member variables - initialized at bottom
+  val context: Context,                                   // context(phone) to run model in
+  val listener: AudioClassificationListener,              // listen for results from tflite model
+  var currentModel: String = YAMNET_MODEL,                // path to tflite model to run - yamnet or speech
+  var classificationThreshold: Float = DISPLAY_THRESHOLD, // acceptable error for classification
+  var overlap: Float = DEFAULT_OVERLAP_VALUE,             // no clue
+  var numOfResults: Int = DEFAULT_NUM_OF_RESULTS,         // number of output from tflite model
+  var currentDelegate: Int = 0,                           // delegate processing to CPU or ???
+  var numThreads: Int = 2                                 // no clue
 ) {
-    private lateinit var classifier: AudioClassifier
-    private lateinit var tensorAudio: TensorAudio
-    private lateinit var recorder: AudioRecord
-    private lateinit var executor: ScheduledThreadPoolExecutor
+    private lateinit var classifier: AudioClassifier           // audioclassifier class - handles building/using tflite model
+    private lateinit var tensorAudio: TensorAudio              // audio tensor(n-D array of data) used by tf
+    private lateinit var recorder: AudioRecord                 // record from mic
+    private lateinit var executor: ScheduledThreadPoolExecutor // executor - to execute ML over fixed intervals
 
+    // call back function for running tflite model
     private val classifyRunnable = Runnable {
-        classifyAudio()
+        classifyAudio() // executes this function
     }
 
+    // function to run on init
     init {
         initClassifier()
     }
 
+    // initialize/set up classifier
     fun initClassifier() {
         // Set general detection options, e.g. number of used threads
         val baseOptionsBuilder = BaseOptions.builder()
@@ -69,18 +73,21 @@ class AudioClassificationHelper(
         }
 
         // Configures a set of parameters for the classifier and what results will be returned.
-        val options = AudioClassifier.AudioClassifierOptions.builder()
-            .setScoreThreshold(classificationThreshold)
-            .setMaxResults(numOfResults)
-            .setBaseOptions(baseOptionsBuilder.build())
-            .build()
+        // Model specific to yamnet - TODO: change for birdnet
+        val options = AudioClassifier.AudioClassifierOptions.builder() // builder function for tflite model
+            .setScoreThreshold(classificationThreshold) // threshold of acceptable error
+            .setMaxResults(numOfResults)                // number of results returned
+            .setBaseOptions(baseOptionsBuilder.build()) // no clue
+            .build()                                    // start building
 
         try {
             // Create the classifier and required supporting objects
-            classifier = AudioClassifier.createFromFileAndOptions(context, currentModel, options)
-            tensorAudio = classifier.createInputTensorAudio()
-            recorder = classifier.createAudioRecord()
-            startAudioClassification()
+            classifier = AudioClassifier.createFromFileAndOptions(context,      // context to run in - android phone
+                                                                  currentModel, // path to tflite model to run
+                                                                  options)      // build options for model
+            tensorAudio = classifier.createInputTensorAudio() // initializes tensor
+            recorder = classifier.createAudioRecord()         // initializes audio recording
+            startAudioClassification()                        // if successful build, start executing model
         } catch (e: IllegalStateException) {
             listener.onError(
                 "Audio Classifier failed to initialize. See error logs for details"
@@ -90,13 +97,15 @@ class AudioClassificationHelper(
         }
     }
 
+    // Starts executing/actually running classification from tflite model
     fun startAudioClassification() {
+        // if still recording/mic in use, wait until finished
         if (recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
             return
         }
 
-        recorder.startRecording()
-        executor = ScheduledThreadPoolExecutor(1)
+        recorder.startRecording()                            // get audio data from mic
+        executor = ScheduledThreadPoolExecutor(1) // fires up tflite model to use
 
         // Each model will expect a specific audio recording length. This formula calculates that
         // length using the input buffer size and tensor format sample rate.
@@ -107,33 +116,36 @@ class AudioClassificationHelper(
 
         val interval = (lengthInMilliSeconds * (1 - overlap)).toLong()
 
-        executor.scheduleAtFixedRate(
-            classifyRunnable,
-            0,
-            interval,
-            TimeUnit.MILLISECONDS)
+        // call/execute tflite model
+        executor.scheduleAtFixedRate( // run model as a schedule at a fixed rate
+            classifyRunnable,         // callback function to run audio classifier from tflite model
+            0,              // no delay - start immediately
+            interval,                 // record in specified interval/rate
+            TimeUnit.MILLISECONDS)    // units of time
     }
 
+    // what actually runs the tflite classifier
     private fun classifyAudio() {
-        tensorAudio.load(recorder)
-        var inferenceTime = SystemClock.uptimeMillis()
-        val output = classifier.classify(tensorAudio)
-        inferenceTime = SystemClock.uptimeMillis() - inferenceTime
-        listener.onResult(output[0].categories, inferenceTime)
+        tensorAudio.load(recorder) // get audio recorded by mic - TODO: change to static audio file
+        var inferenceTime = SystemClock.uptimeMillis()             // get time elapsed from boot
+        val output = classifier.classify(tensorAudio)              // get output from classification
+        inferenceTime = SystemClock.uptimeMillis() - inferenceTime // calculate time took to run model
+        listener.onResult(output[0].categories, inferenceTime)     // format result, and log how long it took
     }
-
+    // stop/close app
     fun stopAudioClassification() {
-        recorder.stop()
-        executor.shutdownNow()
+        recorder.stop()        // stop recorder from mic
+        executor.shutdownNow() // stop tflite model
     }
 
     companion object {
-        const val DELEGATE_CPU = 0
-        const val DELEGATE_NNAPI = 1
-        const val DISPLAY_THRESHOLD = 0.3f
-        const val DEFAULT_NUM_OF_RESULTS = 2
-        const val DEFAULT_OVERLAP_VALUE = 0.5f
-        const val YAMNET_MODEL = "yamnet.tflite"
-        const val SPEECH_COMMAND_MODEL = "speech.tflite"
+        const val DELEGATE_CPU = 0                                 // process on CPU
+        const val DELEGATE_NNAPI = 1                               // use processing on NNAPI
+        const val DISPLAY_THRESHOLD = 0.3f                         // acceptable error
+        const val DEFAULT_NUM_OF_RESULTS = 2                       // default number of results to output
+        const val DEFAULT_OVERLAP_VALUE = 0.5f                     // overlap in audio recording?
+        const val YAMNET_MODEL = "yamnet.tflite"                   // classify type of audio
+        const val SPEECH_COMMAND_MODEL = "speech.tflite"           // speech to text
+        const val BIRDNET_MODEL = "BirdNET_6K_GLOBAL_MODEL.tflite" // birdnet tflite model
     }
 }
