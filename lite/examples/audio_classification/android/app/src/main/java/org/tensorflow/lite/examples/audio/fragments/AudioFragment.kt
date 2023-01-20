@@ -88,14 +88,22 @@ class AudioFragment : Fragment() {
             object : RadioGroup.OnCheckedChangeListener {
             override fun onCheckedChanged(group: RadioGroup?, checkedId: Int) {
                 when (checkedId) {
+                    // switch to audio recognition
                     R.id.yamnet -> {
                         audioHelper.stopAudioClassification()
                         audioHelper.currentModel = AudioClassificationHelper.YAMNET_MODEL
                         audioHelper.initClassifier()
                     }
+                    // switch to speech recognition
                     R.id.speech_command -> {
                         audioHelper.stopAudioClassification()
                         audioHelper.currentModel = AudioClassificationHelper.SPEECH_COMMAND_MODEL
+                        audioHelper.initClassifier()
+                    }
+                    // switch to birdnet classifier
+                    R.id.birdNET -> {
+                        audioHelper.stopAudioClassification()
+                        audioHelper.currentModel = AudioClassificationHelper.BIRDNET_MODEL
                         audioHelper.initClassifier()
                     }
                 }

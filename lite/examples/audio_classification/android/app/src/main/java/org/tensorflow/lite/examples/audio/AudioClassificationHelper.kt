@@ -74,11 +74,21 @@ class AudioClassificationHelper(
 
         // Configures a set of parameters for the classifier and what results will be returned.
         // Model specific to yamnet - TODO: change for birdnet
-        val options = AudioClassifier.AudioClassifierOptions.builder() // builder function for tflite model
-            .setScoreThreshold(classificationThreshold) // threshold of acceptable error
-            .setMaxResults(numOfResults)                // number of results returned
-            .setBaseOptions(baseOptionsBuilder.build()) // no clue
-            .build()                                    // start building
+        val options: AudioClassifier.AudioClassifierOptions
+        if (currentModel == BIRDNET_MODEL) {
+            options = AudioClassifier.AudioClassifierOptions.builder() // builder function for tflite model
+                .setScoreThreshold(classificationThreshold) // threshold of acceptable error
+                .setMaxResults(numOfResults)                // number of results returned
+                .setBaseOptions(baseOptionsBuilder.build()) // no clue
+                .build()                                    // start building
+        }
+        else {
+            options = AudioClassifier.AudioClassifierOptions.builder() // builder function for tflite model
+                .setScoreThreshold(classificationThreshold) // threshold of acceptable error
+                .setMaxResults(numOfResults)                // number of results returned
+                .setBaseOptions(baseOptionsBuilder.build()) // no clue
+                .build()                                    // start building
+        }
 
         try {
             // Create the classifier and required supporting objects
